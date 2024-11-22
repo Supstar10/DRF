@@ -50,7 +50,7 @@ class Lesson(models.Model):
         on_delete=models.CASCADE,
         verbose_name="курсы",
         **NULLABLE,
-        related_name='lesson_set'
+        related_name='lessons'
     )
 
     class Meta:
