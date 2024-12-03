@@ -1,11 +1,15 @@
-from rest_framework import viewsets
+import stripe
+from django.http import JsonResponse
+from rest_framework import viewsets, generics
 from rest_framework.generics import CreateAPIView
 from django_filters import rest_framework as filters
 from rest_framework.permissions import AllowAny
+from rest_framework.views import APIView
 
 from materials.models import Course, Lesson
 from .models import Payments, User
 from .serializers import PaymentsSerializer, UserSerializer
+from .services import create_stripe_price, create_stripe_sessions
 
 
 class UserCreateAPIView(CreateAPIView):
@@ -18,6 +22,7 @@ class UserCreateAPIView(CreateAPIView):
         user.set_password(user.password)
         user.save()
 
+
 class PaymentsFilter(filters.FilterSet):
     course = filters.ModelChoiceFilter(queryset=Course.objects.all())
     lesson = filters.ModelChoiceFilter(queryset=Lesson.objects.all())
@@ -28,8 +33,32 @@ class PaymentsFilter(filters.FilterSet):
         fields = ['payment_date', 'course', 'lesson', 'payment_method']
 
 
-class PaymentsViewSet(viewsets.ModelViewSet):
+class PaymentListCreateAPIView(generics.ListCreateAPIView):
     queryset = Payments.objects.all()
     serializer_class = PaymentsSerializer
-    filter_backends = (filters.DjangoFilterBackend,)
-    filterset_class = PaymentsFilter
+
+    def perform_create(self, serializer):
+        payment = serializer.save(user=self.request.user)
+        price = create_stripe_price(payment.amount)
+        session_id, payment_link = create_stripe_sessions(price)
+        payment.stripe_session_id = session_id
+        payment.link = payment_link
+        payment.save()
+
+
+class PaymentRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Payments.objects.all()
+    serializer_class = PaymentsSerializer
+
+
+class PaymentStatusAPIView(APIView):
+    """Эндпоинт для получения статуса платежа по ID сессии Stripe"""
+
+    def get(self, request, session_id):
+        session = stripe.checkout.Session.retrieve(session_id)
+        payment_status = session.get('payment_status', 'unknown')
+
+        return JsonResponse({
+            'session_id': session.id,
+            'payment_status': payment_status
+        })
