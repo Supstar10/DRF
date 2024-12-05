@@ -4,6 +4,14 @@ from django.conf import settings
 stripe.api_key = settings.STRIPE_API_KEY
 
 
+def create_stripe_product(product_name):
+    """ Создает продукт в stripe """
+
+    return stripe.Product.create(
+        name=product_name,
+    )
+
+
 def create_stripe_price(amount):
     """ Создает цену в stripe """
 
