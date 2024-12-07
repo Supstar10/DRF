@@ -1,5 +1,5 @@
 import stripe
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from rest_framework import viewsets, generics
 from rest_framework.generics import CreateAPIView
 from django_filters import rest_framework as filters
@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 from materials.models import Course, Lesson
 from .models import Payments, User
 from .serializers import PaymentsSerializer, UserSerializer
-from .services import create_stripe_price, create_stripe_sessions
+from .services import create_stripe_price, create_stripe_sessions, create_stripe_product
 
 
 class UserCreateAPIView(CreateAPIView):
@@ -39,11 +39,26 @@ class PaymentListCreateAPIView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         payment = serializer.save(user=self.request.user)
+
+        # Создание продукта и цены в Stripe
+        product_name = f"{payment.course.name} Course"
+        product = create_stripe_product(product_name)
         price = create_stripe_price(payment.amount)
+
+        # Создание сессии для оплаты
         session_id, payment_link = create_stripe_sessions(price)
+
+        # Сохранение данных в модель Payments
         payment.stripe_session_id = session_id
         payment.link = payment_link
         payment.save()
+
+        # Возвращаем ссылку на оплату
+        course = payment.course
+        return HttpResponse(
+            f"Payment URL: {payment_link}",
+            content_type="text/plain",
+        )
 
 
 class PaymentRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
