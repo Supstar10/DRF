@@ -43,7 +43,7 @@ class PaymentListCreateAPIView(generics.ListCreateAPIView):
         # Создание продукта и цены в Stripe
         product_name = f"{payment.course.name} Course"
         product = create_stripe_product(product_name)
-        price = create_stripe_price(payment.amount)
+        price = create_stripe_price(payment.amount, product)
 
         # Создание сессии для оплаты
         session_id, payment_link = create_stripe_sessions(price)
