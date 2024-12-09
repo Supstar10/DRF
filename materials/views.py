@@ -1,5 +1,8 @@
+from datetime import timedelta
+
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
+from django.utils.timezone import now
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
 from rest_framework.generics import (CreateAPIView, DestroyAPIView,
@@ -13,6 +16,7 @@ from rest_framework.viewsets import ModelViewSet
 from materials.models import Course, Lesson, Subscription
 from materials.paginators import CustomPagination
 from materials.serializers import CourseSerializer, LessonSerializer
+from materials.tasks import send_course_update_email
 from users.permissions import IsModer, IsOwner
 
 
@@ -43,6 +47,23 @@ class CourseViewSet(ModelViewSet):
         courses = Course.objects.all()
         serializer = CourseSerializer(courses, many=True, context={'request': request})
         return Response(serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+
+        if instance.updated_at and now() - instance.updated_at < timedelta(hours=4):
+            return Response({"detail": "Курс недавно обновлялся"}, status=400)
+
+        instance.updated_at = now()
+        instance.save()
+
+        subscribers = instance.subscribers.all()
+        for subscriber in subscribers:
+            send_course_update_email.delay(instance.id, subscriber.email)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
 
 
 class LessonCreateApiView(CreateAPIView):
